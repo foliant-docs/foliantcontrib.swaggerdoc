@@ -1,0 +1,230 @@
+{% macro render_items(items, indent = 0) %}
+  {% if "$ref" in items %}
+{{ '- ' + render_ref(items["$ref"]) | indent(indent, True) }}
+  {% elif "properties" in items %}
+{{ render_properties(items.properties, indent=indent+2) }}
+  {% else %}
+    {% for item, item_data in items | dictsort %}
+{{ '- ' + item + ': ' + item_data | indent(indent, True) }}
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+{% macro render_property(property, property_data, is_required = False) %}
+  {% if property == "$ref" %}
+- {{ property }} ({{ render_ref(property_data) }})
+  {% elif "$ref" in property_data and property_data | length == 1 %}
+- {{ property }} ({{ render_ref(property_data["$ref"]) }}{% if is_required %}\*{% endif %})
+  {% elif "allOf" in property_data and property_data | length == 1 %}
+- {{ render_ref(property_data["allOf"][0]["$ref"]) }}{% if is_required %}\*{% endif %}
+  {% else %}
+- {{ property }}{% if is_required %}\*{% endif %}{% if property_data.type%} *({{ property_data.type }})*{% endif %}{% if property_data.description %}: {{ property_data.description }}{% endif %}
+  {% endif %}
+{% endmacro %}
+
+{% macro render_properties(properties, required = [], indent = 0) %}
+  {% for property, property_data in properties | dictsort %}
+{{ render_property(property, property_data, property in required) | indent(indent, True)}}
+
+    {% if "properties" in property_data %}
+{{ render_properties(property_data.properties) | indent(indent+2, True) }}
+
+    {% elif "items" in property_data %}
+{{ render_items(property_data["items"]) | indent(indent+2, True) }}
+
+    {% endif %}
+  {% endfor %}
+{% endmacro %}
+
+{% macro render_definitions(definitions, indent = 0) %}
+  {% for ref, definition in definitions | dictsort %}
+{{ "### " + ref | indent(indent, True) }}
+
+{{ render_properties(definition.properties or definition, definition.required, indent+2) }}
+  {% endfor %}
+{% endmacro %}
+
+{% macro ensure_full_stop(text) %}{% if not text or text.endswith('.') %}{{ text }}{% else %}{{ text }}.{% endif %}{%endmacro%}
+
+{% macro render_ref(ref) %}{% set ref_name = ref.replace("#/definitions/", "") %}*[{{ ref_name }}](#{{ ref_name | lower }})*{% endmacro %}
+
+{% macro render_tag_description(tag, tags) %}
+  {%- for t in tags %}
+    {%- if t.name == tag %}
+{{- t.description }}
+    {%- endif %}
+  {%- endfor %}
+{% endmacro %}
+
+{%- macro render_schema(schema) %}
+  {%- if "$ref" in schema %}
+-d '{
+  {{- render_schema(swagger_data.definitions[schema["$ref"].replace("#/definitions/", "")]) -}}
+}'
+  {%- elif "properties" in schema %}
+    {%- for property, property_data in schema.properties | dictsort %}
+  {{ property }}: {{ property_data.type }}
+    {%- endfor %}
+  {%- endif %}
+{% endmacro -%}
+
+{%- macro render_curl(path, method, method_data) %}
+  {%-set body_params = [] %}
+  {%- for param in method_data.parameters if param.in == "body" %}
+    {%- do body_params.append(param) %}
+  {%- endfor %}
+~~~
+curl -X {{ method | upper }} --header 'Accept: application/json'
+--header 'session_id: YOUR_SESSION_ID'
+  {%- if body_params -%}
+    {%- set body_schema = body_params[0].schema -%}
+{{ render_schema(body_schema) }}
+  {%- else %}
+{% endif -%}
+'{{ swagger_data.schemes[0] }}://{{ swagger_data.host }}{{ swagger_data.basePath }}{{ path }}'
+~~~
+{% endmacro %}
+
+# Справочник методов
+
+*Версия: {{ swagger_data.info.version }}*
+
+{% if swagger_data.schemes | length > 1 %}
+Схемы:
+
+  {% for scheme in swagger_data.schemes %}
+  - {{ scheme }}
+  {% endfor %}
+{% elif swagger_data.schemes | length == 1 %}
+Схема: {{ swagger_data.schemes[0] }}
+{% endif %}
+
+{% if swagger_data.consumes | length > 1 %}
+Формат запросов:
+
+  {% for consume in swagger_data.consumes %}
+  - {{ consume }}
+  {% endfor %}
+{% elif swagger_data.consumes | length == 1 %}
+Формат запросов: {{ swagger_data.consumes[0] }}
+{% endif %}
+
+{% if swagger_data.produces | length > 1 %}
+Формат ответов:
+
+  {% for produce in swagger_data.produces %}
+  - {{ produce }}
+  {% endfor %}
+{% elif swagger_data.produces | length == 1 %}
+Формат ответов: {{ swagger_data.produces[0] }}
+{% endif %}
+
+
+## API-методы
+
+{% set pathdict = {} %}
+{% for path, methods in swagger_data.paths | dictsort %}
+  {% for tag in (methods.values()|list)[0].tags %}
+    {% if tag not in pathdict %}
+      {% do pathdict.update({tag: {}}) %}
+    {% endif %}
+    {% do pathdict[tag].update({path: methods}) %}
+  {% endfor %}
+{% endfor %}
+
+{% for tag, paths in pathdict | dictsort %}
+
+### /{{ tag }}
+
+{{ render_tag_description(tag, swagger_data.tags) }}
+
+  {% for path, methods in paths | dictsort %}
+    {% for method, method_data in methods | dictsort %}
+      {% set endpoint = method | upper + " " + path | replace("{", "(") | replace("}", ")") %}
+
+#### {{ endpoint }}
+
+        {% if method_data.summary %}
+{{ ensure_full_stop(method_data.summary) }}
+        {% endif %}
+
+        {% if method_data.description %}
+{{ ensure_full_stop(method_data.description) }}
+        {% endif %}
+
+    {% if method_data.parameters %}
+      {% set query_params = [] %}
+      {% for param in method_data.parameters if param.in == "query" %}
+        {% do query_params.append(param) %}
+      {% endfor %}
+
+      {% set path_params = [] %}
+      {% for param in method_data.parameters if param.in == "path" %}
+        {% do path_params.append(param) %}
+      {% endfor %}
+
+      {% set body_params = [] %}
+      {% for param in method_data.parameters if param.in == "body" %}
+        {% do body_params.append(param) %}
+      {% endfor %}
+    {% endif %}
+
+    {% if query_params %}
+GET-параметры:
+      {% for param in query_params %}
+  - {{ param.name }} [{{ param.type }}]: {{ ensure_full_stop(param.description) or '—' }}
+      {% endfor %}
+    {% endif %}
+
+    {% if path_params %}
+URL-параметры:
+      {% for param in path_params %}
+  - {{ param.name }} [{{ param.type }}]: {{ ensure_full_stop(param.description) or '—' }}
+      {% endfor %}
+    {% endif %}
+
+    {% if body_params %}
+Body-параметры:
+      {% for param in method_data.parameters if param.in == "body" %}
+  {{ render_property(param.name, param.schema) }}
+      {% endfor %}
+    {% endif %}
+
+      {% if method_data.responses %}
+Варианты ответа:
+        {% for response_code, response_ref in method_data.responses | dictsort %}
+          {% if response_ref %}
+            {% set response_refid = response_ref["$ref"].split('/')[-1] %}
+            {% if response_refid in swagger_data["responses"] %}
+              {% set response_data = swagger_data["responses"][response_refid] %}
+  - {{ response_code }}: {{ ensure_full_stop(response_data.description) or '—' }}
+              {%- if "schema" in response_data and "$ref" in response_data.schema %}
+
+                {% set response_ref = response_data.schema["$ref"].replace("#/definitions/", "") %}
+                {% set response_schema = swagger_data.definitions[response_ref] %}
+
+    {{ render_properties(response_schema.properties, indent=4) }}
+
+              {% elif "schema" in response_data %}
+
+    {{ render_properties(response_data.schema) }}
+
+              {% endif %}
+            {% else %}
+  - {{ response_code }}: *TODO {{ response_refid }}*
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+
+Пример cURL-запроса:
+{{ render_curl(path, method, method_data) }}
+
+    {% endfor %}
+  {% endfor %}
+{% endfor %}
+
+
+## Определения
+
+{{ render_definitions(swagger_data.definitions, 0) }}
