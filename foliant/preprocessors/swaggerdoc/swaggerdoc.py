@@ -95,7 +95,7 @@ class Preprocessor(BasePreprocessor):
 
         try:
             template = self._env.get_template(template)
-            result = template.render(swagger_data=data)
+            result = template.render(swagger_data=data, dumps=json.dumps)
         except Exception as e:
             print(f'\nFailed to render doc template {template}:', e)
             info = traceback.format_exc()
