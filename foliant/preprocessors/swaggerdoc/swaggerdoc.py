@@ -7,7 +7,7 @@ import os
 import traceback
 import json
 import yaml
-from pathlib import Path
+from pathlib import PosixPath
 from urllib.request import urlretrieve
 from urllib.error import HTTPError, URLError
 from distutils.dir_util import remove_tree
@@ -23,6 +23,7 @@ class Preprocessor(BasePreprocessor):
 
     defaults = {
         'json_url': '',
+        'additional_json_path': '',
         'json_path': '',
         'mode': 'jinja',
         'template': 'swagger.j2'
@@ -35,8 +36,9 @@ class Preprocessor(BasePreprocessor):
 
         self.logger.debug(f'Preprocessor inited: {self.__dict__}')
 
+        # '/' for abspaths
         self._env = \
-            Environment(loader=FileSystemLoader(str(self.project_path)),
+            Environment(loader=FileSystemLoader([str(self.project_path), '/']),
                         extensions=["jinja2.ext.do"])
 
         self._modes = {'jinja': self._process_jinja,
@@ -50,53 +52,64 @@ class Preprocessor(BasePreprocessor):
         self._counter = 0
 
     def _gather_jsons(self,
-                      url: str,
-                      path_: str) -> Path:
+                      urls: list,
+                      path_: PosixPath) -> PosixPath:
         """
         Download all swagger JSONs from the url; copy all files into the
         temp dir and return list with files in the same order they are declared
         in options. (first url, then path)
         """
 
-        if url:
-            try:
-                self._counter += 1
-                filename = self._swagger_tmp / f'swagger{self._counter}.json'
-                urlretrieve(url, filename)
-                return filename
-            except (HTTPError, URLError):
-                err = traceback.format_exc()
-                self.logger.debug(f'Cannot retrieve swagger json from url {url}.\n{err}')
-                print(f'\nCannot retrieve swagger json from url {url}. Skipping.')
+        if urls:
+            self._counter += 1
+            for url in urls:
+                try:
+                    filename = self._swagger_tmp / f'swagger{self._counter}.json'
+                    urlretrieve(url, filename)
+                    return filename
+                except (HTTPError, URLError):
+                    err = traceback.format_exc()
+                    self.logger.debug(f'Cannot retrieve swagger json from url {url}.\n{err}')
+                    print(f'\nCannot retrieve swagger json from url {url}. Skipping.')
 
         if path_:
             self._counter += 1
-            file = self.project_path / path_
             dest = self._swagger_tmp / f'swagger{self._counter}.json'
-            if not file.exists():
-                self.logger.debug(f'{file} not found')
-                print(f"\nCan't find file {file}. Skipping.")
+            if not path_.exists():
+                self.logger.debug(f'{path_} not found')
+                print(f"\nCan't find file {path_}. Skipping.")
             else:  # file exists
-                copyfile(str(file), str(dest))
+                copyfile(str(path_), str(dest))
                 return dest
 
     def _process_jinja(self,
-                       json_: Path or str,
+                       json_: PosixPath or str,
                        tag_options: dict) -> str:
         """Process swagger.json with jinja and return the resulting string"""
 
         data = json.load(open(json_, encoding="utf8"))
+        additional = tag_options.get('additional_json_path') or \
+            self.options['additional_json_path']
+        if additional:
+            if type(additional) is str:
+                additional = self.project_path / additional
+            if not additional.exists():
+                print(f'Additional json {additional} is missing. Skipping')
+            else:
+                add = json.load(open(additional, encoding="utf8"))
+                data = {**add, **data}
 
         template = tag_options.get('template', self.options['template'])
-        if template == self.defaults['template'] and\
-                not os.path.exists(self.project_path / template):
+        if type(template) is str:
+            template = self.project_path / template
+        if template == self.project_path / self.defaults['template'] and\
+                not template.exists():
             copyfile(resource_filename(__name__, 'template/' +
-                                       self.defaults['template']),
-                     self.project_path / template)
+                                       self.defaults['template']), template)
         return self._to_md(data, template)
 
     def _process_widdershins(self,
-                             json_: Path or str,
+                             json_: PosixPath or str,
                              tag_options: dict) -> str:
         """
         Process swagger.json with widdershins and return the resulting string
@@ -127,31 +140,21 @@ class Preprocessor(BasePreprocessor):
 
     def _to_md(self,
                data: dict,
-               template: str) -> str:
+               template_path: PosixPath or str) -> str:
         """generate markdown string from 'data' dict using jinja 'template'"""
 
         try:
-            template = self._env.get_template(template)
+            o = open(str(template_path), 'r')
+            template = self._env.get_template(str(template_path))
             result = template.render(swagger_data=data, dumps=json.dumps)
         except Exception as e:
-            print(f'\nFailed to render doc template {template}:', e)
             info = traceback.format_exc()
+            print(f'\nFailed to render doc template {template_path}:', info)
             self.logger.debug(f'Failed to render doc template:\n\n{info}')
             return ''
         return result
 
-    def _gen_docs(self,
-                  filters: dict,
-                  draw: bool,
-                  doc_template: str,
-                  scheme_template: str) -> str:
-        data = self._collect_datasets(filters, draw)
-        docs = self._to_md(data, doc_template)
-        if draw:
-            docs += '\n\n' + self._to_diag(data, scheme_template)
-        return docs
-
-    def process_pgsqldoc_blocks(self, content: str) -> str:
+    def process_swaggerdoc_blocks(self, content: str) -> str:
         def _sub(block: str) -> str:
             if block.group('options'):
                 tag_options = self.get_options(block.group('options'))
@@ -159,7 +162,11 @@ class Preprocessor(BasePreprocessor):
                 tag_options = {}
 
             json_url = tag_options.get('json_url') or self.options['json_url']
+            if json_url and type(json_url) is str:
+                json_url = [json_url]
             json_path = tag_options.get('json_path') or self.options['json_path']
+            if json_path and type(json_path) is str:
+                json_path = self.project_path / json_path
 
             if not (json_path or json_url):
                 print('\nError: No swagger json specified!')
@@ -188,6 +195,6 @@ class Preprocessor(BasePreprocessor):
                 content = markdown_file.read()
 
             with open(markdown_file_path, 'w', encoding='utf8') as markdown_file:
-                markdown_file.write(self.process_pgsqldoc_blocks(content))
+                markdown_file.write(self.process_swaggerdoc_blocks(content))
 
         self.logger.info('Preprocessor applied')
