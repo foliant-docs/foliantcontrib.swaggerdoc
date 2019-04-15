@@ -57,17 +57,17 @@ preprocessors:
 
 ## Usage
 
-Add a `<<swaggerdoc></swaggerdoc>` tag at the position in the document where the generated documentation should be inserted:
+Add a `<swaggerdoc></swaggerdoc>` tag at the position in the document where the generated documentation should be inserted:
 
 ```markdown
 # Introduction
 
 This document contains the automatically generated documentation of our API.
 
-<<swaggerdoc></swaggerdoc>
+<swaggerdoc></swaggerdoc>
 ```
 
-Each time the preprocessor encounters the tag `<<swaggerdoc></swaggerdoc>` it inserts the whole generated documentation text instead of it. The path or url to Swagger spec file are taken from foliant.yml.
+Each time the preprocessor encounters the tag `<swaggerdoc></swaggerdoc>` it inserts the whole generated documentation text instead of it. The path or url to Swagger spec file are taken from foliant.yml.
 
 You can also specify some parameters (or all of them) in the tag options:
 
