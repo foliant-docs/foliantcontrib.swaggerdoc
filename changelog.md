@@ -1,3 +1,9 @@
+# 1.1.3
+
+- Fix issues with json and yaml. All spec files are now loaded with yaml loader.
+- Change PyYAML to ruamel.yaml
+- jinja mode is deprecated, widdershins is the default mode
+
 # 1.1.2
 
 - Bug fixes

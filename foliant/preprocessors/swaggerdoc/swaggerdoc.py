@@ -6,7 +6,7 @@ Generates documentation from Swagger.
 import os
 import traceback
 import json
-import yaml
+from ruamel import yaml
 from pathlib import PosixPath
 from urllib.request import urlretrieve
 from urllib.error import HTTPError, URLError
@@ -14,8 +14,10 @@ from distutils.dir_util import remove_tree
 from shutil import copyfile
 from jinja2 import Environment, FileSystemLoader
 from pkg_resources import resource_filename
-from subprocess import run, PIPE, STDOUT
+from subprocess import run, PIPE
+
 from foliant.preprocessors.base import BasePreprocessor
+from foliant.utils import output
 
 
 class Preprocessor(BasePreprocessor):
@@ -25,7 +27,7 @@ class Preprocessor(BasePreprocessor):
         'json_url': '',
         'additional_json_path': '',
         'json_path': '',
-        'mode': 'jinja',
+        'mode': 'widdershins',
         'template': 'swagger.j2'
     }
 
@@ -51,30 +53,30 @@ class Preprocessor(BasePreprocessor):
 
         self._counter = 0
 
-    def _gather_jsons(self,
+    def _gather_specs(self,
                       urls: list,
                       path_: PosixPath) -> PosixPath:
         """
-        Download all swagger JSONs from the url; copy all files into the
-        temp dir and return list with files in the same order they are declared
-        in options. (first url, then path)
+        Download first swagger spec from the url list; copy it into the
+        temp dir and return path to it. If all urls fail — check path_ and
+        return it.
+
+        Return None if everything fails
         """
 
         if urls:
-            self._counter += 1
             for url in urls:
                 try:
-                    filename = self._swagger_tmp / f'swagger{self._counter}.json'
+                    filename = self._swagger_tmp / f'swagger_spec'
                     urlretrieve(url, filename)
                     return filename
                 except (HTTPError, URLError):
                     err = traceback.format_exc()
-                    self.logger.debug(f'Cannot retrieve swagger json from url {url}.\n{err}')
-                    print(f'\nCannot retrieve swagger json from url {url}. Skipping.')
+                    self.logger.debug(f'Cannot retrieve swagger spec file from url {url}.\n{err}')
+                    print(f'\nCannot retrieve swagger spec file from url {url}. Skipping.')
 
         if path_:
-            self._counter += 1
-            dest = self._swagger_tmp / f'swagger{self._counter}.json'
+            dest = self._swagger_tmp / f'swagger_spec'
             if not path_.exists():
                 self.logger.debug(f'{path_} not found')
                 print(f"\nCan't find file {path_}. Skipping.")
@@ -83,20 +85,19 @@ class Preprocessor(BasePreprocessor):
                 return dest
 
     def _process_jinja(self,
-                       json_: PosixPath or str,
+                       spec: PosixPath,
                        tag_options: dict) -> str:
         """Process swagger.json with jinja and return the resulting string"""
-
-        data = json.load(open(json_, encoding="utf8"))
+        data = yaml.safe_load(open(spec, encoding="utf8"))
         additional = tag_options.get('additional_json_path') or \
             self.options['additional_json_path']
         if additional:
             if type(additional) is str:
                 additional = self.project_path / additional
             if not additional.exists():
-                print(f'Additional json {additional} is missing. Skipping')
+                print(f'Additional swagger spec file {additional} is missing. Skipping')
             else:
-                add = json.load(open(additional, encoding="utf8"))
+                add = yaml.safe_load(open(additional, encoding="utf8"))
                 data = {**add, **data}
 
         template = tag_options.get('template', self.options['template'])
@@ -109,7 +110,7 @@ class Preprocessor(BasePreprocessor):
         return self._to_md(data, template)
 
     def _process_widdershins(self,
-                             json_: PosixPath or str,
+                             spec: PosixPath,
                              tag_options: dict) -> str:
         """
         Process swagger.json with widdershins and return the resulting string
@@ -127,15 +128,31 @@ class Preprocessor(BasePreprocessor):
                 env_str = f'--environment {env_yaml}'
         else:  # not environment
             env_str = ''
-        in_str = str(json_)
+        log_path = self._swagger_tmp / 'widdershins.log'
+        in_str = str(spec)
         out_str = str(self._swagger_tmp / f'swagger{self._counter}.md')
-        run(
-            f'widdershins {env_str} {in_str} -o {out_str}',
+        cmd = f'widdershins {env_str} {in_str} -o {out_str}'
+        self.logger.info(f'Constructed command: \n {cmd}')
+        result = run(
+            cmd,
             shell=True,
             check=True,
             stdout=PIPE,
-            stderr=STDOUT
+            stderr=PIPE
         )
+        with open(log_path, 'w') as f:
+            f.write(result.stdout.decode())
+            f.write('\n\n')
+            f.write(result.stderr.decode())
+        self.logger.info(f'Build log saved at {log_path}')
+        if result.stderr:
+            error_fragment = '\n'.join(result.stderr.decode().split("\n")[:3])
+            self.logger.warning('Widdershins builder returned error or warning:\n'
+                                f'{error_fragment}\n...\n'
+                                f'Full build log at {log_path.absolute()}')
+            output('Widdershins builder returned error or warning:\n'
+                   f'{error_fragment}\n...\n'
+                   f'Full build log at {log_path.absolute()}', self.quiet)
         return open(out_str).read()
 
     def _to_md(self,
@@ -161,15 +178,15 @@ class Preprocessor(BasePreprocessor):
             else:
                 tag_options = {}
 
-            json_url = tag_options.get('json_url') or self.options['json_url']
-            if json_url and type(json_url) is str:
-                json_url = [json_url]
-            json_path = tag_options.get('json_path') or self.options['json_path']
-            if json_path and type(json_path) is str:
-                json_path = self.project_path / json_path
+            spec_url = tag_options.get('json_url') or self.options['json_url']
+            if spec_url and type(spec_url) is str:
+                spec_url = [spec_url]
+            spec_path = tag_options.get('json_path') or self.options['json_path']
+            if spec_path and type(spec_path) is str:
+                spec_path = self.project_path / spec_path
 
-            if not (json_path or json_url):
-                print('\nError: No swagger json specified!')
+            if not (spec_path or spec_url):
+                print('\nError: No swagger spec file specified!')
                 return ''
 
             mode = tag_options.get('mode') or self.options['mode']
@@ -178,11 +195,11 @@ class Preprocessor(BasePreprocessor):
                       f' Should be one of {self._modes}')
                 return ''
 
-            json_ = self._gather_jsons(json_url, json_path)
-            if not json_:
-                raise RuntimeError("No valid swagger.json specified")
+            spec = self._gather_specs(spec_url, spec_path)
+            if not spec:
+                raise RuntimeError("No valid swagger spec file specified")
 
-            return self._modes[mode](json_, tag_options)
+            return self._modes[mode](spec, tag_options)
         return self.pattern.sub(_sub, content)
 
     def apply(self):
