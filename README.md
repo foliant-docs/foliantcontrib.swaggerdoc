@@ -1,3 +1,5 @@
+![](https://img.shields.io/pypi/v/foliantcontrib.swaggerdoc.svg)
+
 # Swagger API Docs Generator for Foliant
 
 This preprocessor generates Markdown documentation from [Swagger](https://swagger.io/) spec files . It uses [Jinja2](http://jinja.pocoo.org/) templating engine or [widdershins](https://github.com/mermade/widdershins) for generating Markdown from swagger spec files.
