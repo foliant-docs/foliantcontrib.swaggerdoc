@@ -1,3 +1,9 @@
+# 1.2.0
+
+- Add `spec_path` and `spec_url` parameters.
+- All path tag parameters are now loaded relative to current file.
+- Better logging and error reporting
+
 # 1.1.3
 
 - Fix issues with json and yaml. All spec files are now loaded with yaml loader.

@@ -7,7 +7,7 @@ import os
 import traceback
 import json
 from ruamel import yaml
-from pathlib import PosixPath
+from pathlib import Path, PosixPath
 from urllib.request import urlretrieve
 from urllib.error import HTTPError, URLError
 from distutils.dir_util import remove_tree
@@ -16,17 +16,25 @@ from jinja2 import Environment, FileSystemLoader
 from pkg_resources import resource_filename
 from subprocess import run, PIPE
 
-from foliant.preprocessors.base import BasePreprocessor
+from foliant.preprocessors.utils.preprocessor_ext import (BasePreprocessorExt,
+                                                          allow_fail)
+from foliant.preprocessors.utils.combined_options import (Options,
+                                                          CombinedOptions,
+                                                          validate_exists,
+                                                          validate_in,
+                                                          rel_path_convertor)
 from foliant.utils import output
 
 
-class Preprocessor(BasePreprocessor):
+class Preprocessor(BasePreprocessorExt):
     tags = ('swaggerdoc',)
 
     defaults = {
-        'json_url': '',
+        'json_url': [],  # deprecated
+        'spec_url': [],
         'additional_json_path': '',
-        'json_path': '',
+        'json_path': '',  # deprecated
+        'spec_path': '',
         'mode': 'widdershins',
         'template': 'swagger.j2'
     }
@@ -52,10 +60,13 @@ class Preprocessor(BasePreprocessor):
         os.makedirs(self._swagger_tmp)
 
         self._counter = 0
+        self.options = Options(self.options,
+                               validators={'json_path': validate_exists,
+                                           'spec_path': validate_exists})
 
     def _gather_specs(self,
                       urls: list,
-                      path_: PosixPath) -> PosixPath:
+                      path_: PosixPath or None) -> PosixPath:
         """
         Download first swagger spec from the url list; copy it into the
         temp dir and return path to it. If all urls fail — check path_ and
@@ -63,68 +74,61 @@ class Preprocessor(BasePreprocessor):
 
         Return None if everything fails
         """
-
+        self.logger.debug(f'Gathering specs. Got list of urls: {urls}, path: {path_}')
         if urls:
             for url in urls:
                 try:
                     filename = self._swagger_tmp / f'swagger_spec'
                     urlretrieve(url, filename)
+                    self.logger.debug(f'Using spec from {url} ({filename})')
                     return filename
-                except (HTTPError, URLError):
-                    err = traceback.format_exc()
-                    self.logger.debug(f'Cannot retrieve swagger spec file from url {url}.\n{err}')
-                    print(f'\nCannot retrieve swagger spec file from url {url}. Skipping.')
+                except (HTTPError, URLError) as e:
+                    self._warning(f'\nCannot retrieve swagger spec file from url {url}. Skipping.',
+                                  error=e)
 
         if path_:
             dest = self._swagger_tmp / f'swagger_spec'
             if not path_.exists():
-                self.logger.debug(f'{path_} not found')
-                print(f"\nCan't find file {path_}. Skipping.")
+                self._warning(f"Can't find file {path_}. Skipping.")
             else:  # file exists
                 copyfile(str(path_), str(dest))
                 return dest
 
     def _process_jinja(self,
                        spec: PosixPath,
-                       tag_options: dict) -> str:
+                       options: CombinedOptions) -> str:
         """Process swagger.json with jinja and return the resulting string"""
+        self.logger.debug('Using jinja mode')
         data = yaml.safe_load(open(spec, encoding="utf8"))
-        additional = tag_options.get('additional_json_path') or \
-            self.options['additional_json_path']
+        additional = options.get('additional_json_path')
         if additional:
-            if type(additional) is str:
-                additional = self.project_path / additional
             if not additional.exists():
-                print(f'Additional swagger spec file {additional} is missing. Skipping')
+                self._warning(f'Additional swagger spec file {additional} is missing. Skipping')
             else:
                 add = yaml.safe_load(open(additional, encoding="utf8"))
                 data = {**add, **data}
 
-        template = tag_options.get('template', self.options['template'])
-        if type(template) is str:
-            template = self.project_path / template
-        if template == self.project_path / self.defaults['template'] and\
-                not template.exists():
+        if options.is_default('template') and not Path(options['template']).exists():
             copyfile(resource_filename(__name__, 'template/' +
-                                       self.defaults['template']), template)
-        return self._to_md(data, template)
+                                       self.defaults['template']), options['template'])
+        return self._to_md(data, options['template'])
 
     def _process_widdershins(self,
                              spec: PosixPath,
-                             tag_options: dict) -> str:
+                             options: CombinedOptions) -> str:
         """
         Process swagger.json with widdershins and return the resulting string
         """
 
-        environment = tag_options.get('environment') or \
-            self.options.get('environment')
+        self.logger.debug('Using widdershins mode')
+        environment = options.get('environment')
         if environment:
-            if type(environment) is str:
+            if isinstance(environment, str) or isinstance(environment, PosixPath):
                 env_str = f'--environment {environment}'
             else:  # inline config in foliant.yaml
-                env_yaml = str(self._swagger_tmp / 'emv.yaml')
+                env_yaml = str(self._swagger_tmp / 'env.yaml')
                 with open(env_yaml, 'w') as f:
-                    f.write(yaml.dump(environment))
+                    yaml.dump(environment, f)
                 env_str = f'--environment {env_yaml}'
         else:  # not environment
             env_str = ''
@@ -147,13 +151,11 @@ class Preprocessor(BasePreprocessor):
         self.logger.info(f'Build log saved at {log_path}')
         if result.stderr:
             error_fragment = '\n'.join(result.stderr.decode().split("\n")[:3])
-            self.logger.warning('Widdershins builder returned error or warning:\n'
-                                f'{error_fragment}\n...\n'
-                                f'Full build log at {log_path.absolute()}')
-            output('Widdershins builder returned error or warning:\n'
-                   f'{error_fragment}\n...\n'
-                   f'Full build log at {log_path.absolute()}', self.quiet)
-        return open(out_str).read()
+            self._warning('Widdershins builder returned error or warning:\n'
+                          f'{error_fragment}\n...\n'
+                          f'Full build log at {log_path.absolute()}')
+        with open(out_str) as f:
+            return f.read()
 
     def _to_md(self,
                data: dict,
@@ -161,57 +163,39 @@ class Preprocessor(BasePreprocessor):
         """generate markdown string from 'data' dict using jinja 'template'"""
 
         try:
-            o = open(str(template_path), 'r')
             template = self._env.get_template(str(template_path))
             result = template.render(swagger_data=data, dumps=json.dumps)
         except Exception as e:
-            info = traceback.format_exc()
-            print(f'\nFailed to render doc template {template_path}:', info)
-            self.logger.debug(f'Failed to render doc template:\n\n{info}')
+            self._warning(f'\nFailed to render doc template {template_path}',
+                          error=e)
             return ''
         return result
 
-    def process_swaggerdoc_blocks(self, content: str) -> str:
-        def _sub(block: str) -> str:
-            if block.group('options'):
-                tag_options = self.get_options(block.group('options'))
-            else:
-                tag_options = {}
+    @allow_fail()
+    def process_swaggerdoc_blocks(self, block) -> str:
+        tag_options = Options(self.get_options(block.group('options')),
+                              convertors={'json_path': rel_path_convertor(self.current_filepath.parent),
+                                          'spec_path': rel_path_convertor(self.current_filepath.parent),
+                                          'additional_json_path': rel_path_convertor(self.current_filepath.parent)})
+        options = CombinedOptions(options={'config': self.options,
+                                           'tag': tag_options},
+                                  priority='tag',
+                                  required=[('json_url',),
+                                            ('json_path',),
+                                            ('spec_url',),
+                                            ('spec_path',)],
+                                  validators={'mode': validate_in(self._modes)})
+        self.logger.debug(f'Processing swaggerdoc tag in {self.current_filepath}')
+        spec_url = options['spec_url'] or options['json_url']
+        if spec_url and isinstance(spec_url, str):
+            spec_url = [spec_url]
+        spec_path = options['spec_path'] or options['json_path']
+        spec = self._gather_specs(spec_url, spec_path)
+        if not spec:
+            raise RuntimeError("No valid swagger spec file specified")
 
-            spec_url = tag_options.get('json_url') or self.options['json_url']
-            if spec_url and type(spec_url) is str:
-                spec_url = [spec_url]
-            spec_path = tag_options.get('json_path') or self.options['json_path']
-            if spec_path and type(spec_path) is str:
-                spec_path = self.project_path / spec_path
-
-            if not (spec_path or spec_url):
-                print('\nError: No swagger spec file specified!')
-                return ''
-
-            mode = tag_options.get('mode') or self.options['mode']
-            if mode not in self._modes:
-                print(f'\nError: Unrecognised mode {mode}.'
-                      f' Should be one of {self._modes}')
-                return ''
-
-            spec = self._gather_specs(spec_url, spec_path)
-            if not spec:
-                raise RuntimeError("No valid swagger spec file specified")
-
-            return self._modes[mode](spec, tag_options)
-        return self.pattern.sub(_sub, content)
+        return self._modes[options['mode']](spec, options)
 
     def apply(self):
-        self.logger.info('Applying preprocessor')
-
-        for markdown_file_path in self.working_dir.rglob('*.md'):
-            self.logger.debug(f'Processing Markdown file: {markdown_file_path}')
-
-            with open(markdown_file_path, encoding='utf8') as markdown_file:
-                content = markdown_file.read()
-
-            with open(markdown_file_path, 'w', encoding='utf8') as markdown_file:
-                markdown_file.write(self.process_swaggerdoc_blocks(content))
-
+        self._process_tags_for_all_files(func=self.process_swaggerdoc_blocks)
         self.logger.info('Preprocessor applied')
