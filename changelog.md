@@ -1,4 +1,4 @@
-# 1.2.1
+# 1.2.2
 
 - Fix spec path issue.
 - Fix: jinja mode default template wansn't copied.
