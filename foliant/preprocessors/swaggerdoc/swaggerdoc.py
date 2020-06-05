@@ -66,7 +66,7 @@ class Preprocessor(BasePreprocessorExt):
 
     def _gather_specs(self,
                       urls: list,
-                      path_: PosixPath or None) -> PosixPath:
+                      path_: str or PosixPath or None) -> PosixPath:
         """
         Download first swagger spec from the url list; copy it into the
         temp dir and return path to it. If all urls fail — check path_ and
@@ -88,7 +88,7 @@ class Preprocessor(BasePreprocessorExt):
 
         if path_:
             dest = self._swagger_tmp / f'swagger_spec'
-            if not path_.exists():
+            if not Path(path_).exists():
                 self._warning(f"Can't find file {path_}. Skipping.")
             else:  # file exists
                 copyfile(str(path_), str(dest))
@@ -107,10 +107,14 @@ class Preprocessor(BasePreprocessorExt):
             else:
                 add = yaml.safe_load(open(additional, encoding="utf8"))
                 data = {**add, **data}
-
         if options.is_default('template') and not Path(options['template']).exists():
-            copyfile(resource_filename(__name__, 'template/' +
-                                       self.defaults['template']), options['template'])
+            copyfile(
+                resource_filename(
+                    __name__,
+                    'template/' + self.defaults['template']
+                ),
+                options['template']
+            )
         return self._to_md(data, options['template'])
 
     def _process_widdershins(self,
@@ -184,7 +188,8 @@ class Preprocessor(BasePreprocessorExt):
                                             ('json_path',),
                                             ('spec_url',),
                                             ('spec_path',)],
-                                  validators={'mode': validate_in(self._modes)})
+                                  validators={'mode': validate_in(self._modes)},
+                                  defaults=self.defaults)
         self.logger.debug(f'Processing swaggerdoc tag in {self.current_filepath}')
         spec_url = options['spec_url'] or options['json_url']
         if spec_url and isinstance(spec_url, str):

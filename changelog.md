@@ -1,3 +1,8 @@
+# 1.2.1
+
+- Fix spec path issue.
+- Fix: jinja mode default template wansn't copied.
+
 # 1.2.0
 
 - Add `spec_path` and `spec_url` parameters.
