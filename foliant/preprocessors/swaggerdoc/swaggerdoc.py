@@ -85,14 +85,15 @@ class Preprocessor(BasePreprocessorExt):
                 except (HTTPError, URLError) as e:
                     self._warning(f'\nCannot retrieve swagger spec file from url {url}. Skipping.',
                                   error=e)
-
-        if path_:
-            dest = self._swagger_tmp / f'swagger_spec'
-            if not Path(path_).exists():
+        local_path = Path(path_)
+        if local_path:
+            # dest = self._swagger_tmp / f'swagger_spec'
+            if not local_path.exists():
                 self._warning(f"Can't find file {path_}. Skipping.")
             else:  # file exists
-                copyfile(str(path_), str(dest))
-                return dest
+                return local_path.resolve()
+                # copyfile(str(path_), str(dest))
+                # return dest
 
     def _process_jinja(self,
                        spec: PosixPath,

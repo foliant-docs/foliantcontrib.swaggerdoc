@@ -1,3 +1,7 @@
+# 1.2.3
+
+- Fix: build failed when spec referenced to other files with $ref.
+
 # 1.2.2
 
 - Fix spec path issue.
