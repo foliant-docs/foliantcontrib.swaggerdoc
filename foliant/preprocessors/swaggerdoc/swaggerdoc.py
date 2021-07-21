@@ -3,27 +3,31 @@ Preprocessor for Foliant documentation authoring tool.
 Generates documentation from Swagger.
 '''
 
-import os
-import traceback
 import json
-from ruamel import yaml
-from pathlib import Path, PosixPath
-from urllib.request import urlretrieve
-from urllib.error import HTTPError, URLError
-from distutils.dir_util import remove_tree
-from shutil import copyfile
-from jinja2 import Environment, FileSystemLoader
-from pkg_resources import resource_filename
-from subprocess import run, PIPE
+import os
 
-from foliant.preprocessors.utils.preprocessor_ext import (BasePreprocessorExt,
-                                                          allow_fail)
-from foliant.preprocessors.utils.combined_options import (Options,
-                                                          CombinedOptions,
-                                                          validate_exists,
-                                                          validate_in,
-                                                          rel_path_convertor)
-from foliant.utils import output
+from distutils.dir_util import remove_tree
+from pathlib import Path
+from pathlib import PosixPath
+from pkg_resources import resource_filename
+from shutil import copyfile
+from subprocess import PIPE
+from subprocess import run
+from urllib.error import HTTPError
+from urllib.error import URLError
+from urllib.request import urlretrieve
+
+from jinja2 import Environment
+from jinja2 import FileSystemLoader
+from ruamel import yaml
+
+from foliant.contrib.combined_options import CombinedOptions
+from foliant.contrib.combined_options import Options
+from foliant.contrib.combined_options import rel_path_convertor
+from foliant.contrib.combined_options import validate_exists
+from foliant.contrib.combined_options import validate_in
+from foliant.preprocessors.utils.preprocessor_ext import BasePreprocessorExt
+from foliant.preprocessors.utils.preprocessor_ext import allow_fail
 
 
 class Preprocessor(BasePreprocessorExt):

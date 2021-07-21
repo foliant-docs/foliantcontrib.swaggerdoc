@@ -16,7 +16,7 @@ setup(
     description=SHORT_DESCRIPTION,
     long_description=LONG_DESCRIPTION,
     long_description_content_type='text/markdown',
-    version='1.2.3',
+    version='1.2.4',
     author='Daniil Minukhin',
     author_email='ddddsa@gmail.com',
     packages=['foliant.preprocessors.swaggerdoc'],
@@ -27,8 +27,7 @@ setup(
         'foliant>=1.0.5',
         'jinja2',
         'ruamel.yaml',
-        'foliantcontrib.utils.combined_options>=1.0.7',
-        'foliantcontrib.utils.preprocessor_ext',
+        'foliantcontrib.utils>=1.0.2',
     ],
     classifiers=[
         "Development Status :: 5 - Production/Stable",

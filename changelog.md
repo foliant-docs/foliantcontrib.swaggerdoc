@@ -1,3 +1,7 @@
+# 1.2.4
+
+- New utils module.
+
 # 1.2.3
 
 - Fix: build failed when spec referenced to other files with $ref.

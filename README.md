@@ -1,4 +1,3 @@
-
 [![](https://img.shields.io/pypi/v/foliantcontrib.swaggerdoc.svg)](https://pypi.org/project/foliantcontrib.swaggerdoc/)  [![](https://img.shields.io/github/v/tag/foliant-docs/foliantcontrib.swaggerdoc.svg?label=GitHub)](https://github.com/foliant-docs/foliantcontrib.swaggerdoc)
 
 # Swagger API Docs Generator for Foliant
