@@ -1,3 +1,7 @@
+# 1.2.5
+
+- Fix: a specific version of ruamel.yaml was used
+
 # 1.2.4
 
 - New utils module.
