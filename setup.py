@@ -26,7 +26,7 @@ setup(
     install_requires=[
         'foliant>=1.0.5',
         'jinja2',
-        'ruamel.yaml',
+        'ruamel.yaml==0.17.40',
         'foliantcontrib.utils>=1.0.2',
     ],
     classifiers=[
