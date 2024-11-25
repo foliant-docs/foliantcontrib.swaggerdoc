@@ -40,7 +40,7 @@ preprocessors:
         mode: widdershins
         template: swagger.j2
         environment: env.yaml
-
+        strick: false
 ```
 
 `spec_url`
@@ -64,6 +64,9 @@ preprocessors:
 
 `environment`
 :   Only for `widdershins` mode. Parameters for widdershins converter. You can either pass a string containing relative path to YAML or JSON file with all parameters (like in example above) or specify all parameters in YAML format under this key. [More info](https://github.com/mermade/widdershins) on widdershins parameters.
+
+`strict`
+:   If the `strict` option is enabled, then if a critical error is detected, the build will be aborted after applying the preprocessor.
 
 ## Usage
 

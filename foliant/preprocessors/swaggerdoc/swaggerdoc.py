@@ -28,6 +28,7 @@ from foliant.contrib.combined_options import validate_exists
 from foliant.contrib.combined_options import validate_in
 from foliant.preprocessors.utils.preprocessor_ext import BasePreprocessorExt
 from foliant.preprocessors.utils.preprocessor_ext import allow_fail
+from foliant.utils import output
 
 
 class Preprocessor(BasePreprocessorExt):
@@ -40,7 +41,8 @@ class Preprocessor(BasePreprocessorExt):
         'json_path': '',  # deprecated
         'spec_path': '',
         'mode': 'widdershins',
-        'template': 'swagger.j2'
+        'template': 'swagger.j2',
+        'strict': False
     }
 
     def __init__(self, *args, **kwargs):
@@ -67,6 +69,7 @@ class Preprocessor(BasePreprocessorExt):
         self.options = Options(self.options,
                                validators={'json_path': validate_exists,
                                            'spec_path': validate_exists})
+        self.critical_error = []
 
     def _gather_specs(self,
                       urls: list,
@@ -87,8 +90,14 @@ class Preprocessor(BasePreprocessorExt):
                     self.logger.debug(f'Using spec from {url} ({filename})')
                     return filename
                 except (HTTPError, URLError) as e:
-                    self._warning(f'\nCannot retrieve swagger spec file from url {url}. Skipping.',
-                                  error=e)
+                    msg = f'\nCannot retrieve swagger spec file from url {url}.'
+                    if self.options['strict']:
+                        self.logger.error(msg)
+                        self.critical_error.append(msg)
+                        output(f'ERROR: {msg}')
+                    else:
+                        self._warning(f'{msg}. Skipping.',
+                                    error=e)
         local_path = Path(path_)
         if local_path:
             # dest = self._swagger_tmp / f'swagger_spec'
@@ -208,4 +217,10 @@ class Preprocessor(BasePreprocessorExt):
 
     def apply(self):
         self._process_tags_for_all_files(func=self.process_swaggerdoc_blocks)
-        self.logger.info('Preprocessor applied')
+        if len(self.critical_error) > 0:
+            self.logger.info('Critical errors have occurred')
+            errors = '\n'.join(self.critical_error)
+            output(f'\nBuild failed: swaggerdoc preprocessor errors: \n{errors}\n')
+            os._exit(2)
+        else:
+            self.logger.info('Preprocessor applied')
