@@ -30,7 +30,6 @@ from foliant.preprocessors.utils.preprocessor_ext import BasePreprocessorExt
 from foliant.preprocessors.utils.preprocessor_ext import allow_fail
 from foliant.utils import output
 
-
 class Preprocessor(BasePreprocessorExt):
     tags = ('swaggerdoc',)
 
@@ -42,7 +41,7 @@ class Preprocessor(BasePreprocessorExt):
         'spec_path': '',
         'mode': 'widdershins',
         'template': 'swagger.j2',
-        'strict': False
+        'strict': True
     }
 
     def __init__(self, *args, **kwargs):
@@ -69,7 +68,6 @@ class Preprocessor(BasePreprocessorExt):
         self.options = Options(self.options,
                                validators={'json_path': validate_exists,
                                            'spec_path': validate_exists})
-        self.critical_error = []
 
     def _gather_specs(self,
                       urls: list,
@@ -93,8 +91,8 @@ class Preprocessor(BasePreprocessorExt):
                     msg = f'\nCannot retrieve swagger spec file from url {url}.'
                     if self.options['strict']:
                         self.logger.error(msg)
-                        self.critical_error.append(msg)
                         output(f'ERROR: {msg}')
+                        os._exit(1)
                     else:
                         self._warning(f'{msg}. Skipping.',
                                     error=e)
@@ -217,10 +215,4 @@ class Preprocessor(BasePreprocessorExt):
 
     def apply(self):
         self._process_tags_for_all_files(func=self.process_swaggerdoc_blocks)
-        if len(self.critical_error) > 0:
-            self.logger.info('Critical errors have occurred')
-            errors = '\n'.join(self.critical_error)
-            output(f'\nBuild failed: swaggerdoc preprocessor errors: \n{errors}\n')
-            os._exit(2)
-        else:
-            self.logger.info('Preprocessor applied')
+        self.logger.info('Preprocessor applied')
