@@ -135,11 +135,11 @@ If you wish to use the default template as a starting point, build the foliant p
 ## Tests
 
 To run the tests locally, you will need to install NodeJS.
-If you have nodejs installed, then run:
+If you have NodeJS installed, then run:
 ```bash
 ./test.sh
 ```
-Alternatively, you can also use a Docker image to run the tests. To do so, run:
+Alternatively, you can also use a Docker to run the tests. To do so, run:
 ```bash
 ./test_in_docker.sh
 ```
