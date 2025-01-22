@@ -28,7 +28,7 @@ from foliant.contrib.combined_options import validate_exists
 from foliant.contrib.combined_options import validate_in
 from foliant.preprocessors.utils.preprocessor_ext import BasePreprocessorExt
 from foliant.preprocessors.utils.preprocessor_ext import allow_fail
-
+from foliant.utils import output
 
 class Preprocessor(BasePreprocessorExt):
     tags = ('swaggerdoc',)
@@ -40,7 +40,8 @@ class Preprocessor(BasePreprocessorExt):
         'json_path': '',  # deprecated
         'spec_path': '',
         'mode': 'widdershins',
-        'template': 'swagger.j2'
+        'template': 'swagger.j2',
+        'strict': True
     }
 
     def __init__(self, *args, **kwargs):
@@ -87,8 +88,14 @@ class Preprocessor(BasePreprocessorExt):
                     self.logger.debug(f'Using spec from {url} ({filename})')
                     return filename
                 except (HTTPError, URLError) as e:
-                    self._warning(f'\nCannot retrieve swagger spec file from url {url}. Skipping.',
-                                  error=e)
+                    msg = f'\nCannot retrieve swagger spec file from url {url}.'
+                    if self.options['strict']:
+                        self.logger.error(msg)
+                        output(f'ERROR: {msg}')
+                        os._exit(1)
+                    else:
+                        self._warning(f'{msg}. Skipping.',
+                                    error=e)
         local_path = Path(path_)
         if local_path:
             # dest = self._swagger_tmp / f'swagger_spec'

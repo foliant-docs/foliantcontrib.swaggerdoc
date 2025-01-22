@@ -1,3 +1,7 @@
+# 1.2.6
+
+- Add: strict behavior option and tests
+
 # 1.2.5
 
 - Fix: a specific version of ruamel.yaml was used
