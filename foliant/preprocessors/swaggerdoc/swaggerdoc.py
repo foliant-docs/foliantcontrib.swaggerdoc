@@ -15,7 +15,7 @@ from subprocess import PIPE
 from subprocess import run
 from urllib.error import HTTPError
 from urllib.error import URLError
-from urllib.request import urlretrieve
+from urllib import request
 
 from jinja2 import Environment
 from jinja2 import FileSystemLoader
@@ -41,7 +41,8 @@ class Preprocessor(BasePreprocessorExt):
         'spec_path': '',
         'mode': 'widdershins',
         'template': 'swagger.j2',
-        'strict': True
+        'strict': True,
+        'header_accept': False
     }
 
     def __init__(self, *args, **kwargs):
@@ -83,8 +84,13 @@ class Preprocessor(BasePreprocessorExt):
         if urls:
             for url in urls:
                 try:
+                    if self.options.get('header_accept', False):
+                        opener = request.build_opener()
+                        opener.addheaders = [('Accept', 'text/plain')]
+                        request.install_opener(opener)
                     filename = self._swagger_tmp / f'swagger_spec'
-                    urlretrieve(url, filename)
+                    request.urlretrieve(url, filename)
+
                     self.logger.debug(f'Using spec from {url} ({filename})')
                     return filename
                 except (HTTPError, URLError) as e:

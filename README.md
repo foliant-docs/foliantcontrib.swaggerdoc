@@ -68,6 +68,9 @@ preprocessors:
 `strict`
 :   If the `strict` option is enabled, then if a critical error is detected, the build will be aborted after applying the preprocessor.
 
+`header_accept`
+:   If the `header_accept` option is enabled, the `Accept: text/plain` header will be added to HTTP requests when retrieving the Swagger specification file from a URL. This can be useful when the server returns different content types based on the `Accept` header. By default, this option is enabled (`true`).
+
 ## Usage
 
 Add a `<swaggerdoc></swaggerdoc>` tag at the position in the document where the generated documentation should be inserted:

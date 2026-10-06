@@ -1,3 +1,11 @@
+# 1.2.8
+
+- The `header_accept` option is disabled by default
+
+# 1.2.7
+
+- Add: `header_accept` option
+
 # 1.2.6
 
 - Add: strict behavior option and tests
